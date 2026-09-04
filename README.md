@@ -2,26 +2,32 @@
 
 **Controlled amplifier-style feedback without an amplifier.**
 
-SCREAMBACK is an open-source guitar feedback effect for Windows and macOS. It listens to the clean input, tracks the fundamental, and grows a controlled harmonic feedback voice that can be played from the UI, automated by the DAW, or triggered from MIDI.
+SCREAMBACK is an open-source guitar feedback effect for Windows and macOS. Put it before distortion / amp simulation, play a note, then engage **SCREAM** to grow and hold a controlled feedback voice.
 
-## v0.1 MVP
+## v0.2
 
-Three feedback personalities:
+The feedbacker now behaves like a pedal rather than a timed sound effect:
 
-- **DF-2** — old-school tracked synthetic feedback with a little vibrato and a conservative harmonic transition.
-- **FreqOut** — faster, tighter harmonic reinforcement with more resonator in the sound.
-- **Natural** — slower, less predictable harmonic migration: fundamental → 2nd → 3rd → 5th.
+1. Play or sustain a note.
+2. Press **SCREAM**. SCREAMBACK captures the detected pitch and grows feedback according to **RISE**.
+3. The captured feedback keeps sounding while SCREAM is engaged, even after the guitar note itself becomes too quiet to track.
+4. Release/retrigger SCREAM to capture a different note. Normal vibrato and bends around the captured note are still followed.
 
-Controls are intentionally minimal:
+Three personalities:
 
-- **Mode** — DF-2 / FreqOut / Natural
-- **Voice** — Auto / Fundamental / 2nd / 3rd / 5th
-- **Amount** — feedback level
-- **Onset** — how quickly feedback blooms
-- **Sensitivity** — tracking/gate sensitivity
-- **Engage** — arm the feedbacker
+- **DF-2** — synthetic, old-school PLL-like feedback. `Auto` stays on the fundamental.
+- **FreqOut** — tighter, focused feedback. `Auto` stays on the 2nd harmonic.
+- **Natural** — softer feedback that evolves slowly through harmonics when `Auto` is selected.
 
-Put SCREAMBACK **before distortion / amp simulation** for the cleanest tracking.
+Controls are intentionally small in number:
+
+- **LEVEL** — volume/intensity of the generated feedback voice.
+- **RISE** — how long the feedback takes to bloom, from 15 to 1500 ms.
+- **TRACK** — how easily the input detector accepts a note. Turn it up for quieter DI signals; turn it down if noisy input causes false locks.
+- **HARMONIC** — Auto / Fundamental / 2nd / 3rd / 5th. Explicit harmonic choices never migrate by themselves.
+- **SCREAM** — click in the UI to latch/unlatch. MIDI C3 or CC64 works as a momentary footswitch.
+
+The default is intentionally straightforward: **FreqOut + 2nd harmonic + 250 ms rise**.
 
 ## Download and install
 
@@ -36,21 +42,19 @@ Development CI artifacts also contain the raw plug-in bundles for manual install
 
 Current public builds do not yet use paid platform signing certificates: Windows may show SmartScreen's "Unknown publisher" warning and the macOS package is not Developer ID signed/notarized. The macOS plug-in bundles themselves are ad-hoc signed in CI.
 
-## MIDI
+## MIDI / automation
 
-SCREAMBACK accepts MIDI input in VST3/AU hosts.
+SCREAMBACK accepts MIDI input in VST3/AU hosts. All controls are also normal plug-in parameters and can be automated by the DAW.
 
 | Control | Mapping |
 | --- | --- |
-| Momentary feedback gate | Note C3 (MIDI note 60) or CC64 |
-| Engage | CC20 |
-| Amount | CC21 |
-| Onset | CC22 |
-| Voice | CC23 |
-| Sensitivity | CC24 |
-| Mode | CC25 |
-
-All user-facing controls are normal plug-in parameters too, so they can be automated by the DAW.
+| Momentary SCREAM | Note C3 (MIDI note 60) or CC64 |
+| SCREAM toggle | CC20 |
+| LEVEL | CC21 |
+| RISE | CC22 |
+| HARMONIC | CC23 |
+| TRACK | CC24 |
+| MODE | CC25 |
 
 ## Formats
 
@@ -59,7 +63,7 @@ CI builds and packages:
 - Windows x64: **VST3** + `.exe` installer
 - macOS universal (Apple Silicon + Intel): **VST3**, **AUv2** + `.pkg` installer
 
-A tag matching `v*` (for example `v0.1.0`) automatically builds both platforms and publishes the two installers as GitHub Release assets.
+A tag matching `v*` automatically builds both platforms and publishes the two installers as GitHub Release assets.
 
 ## Building
 
@@ -87,22 +91,18 @@ ctest --test-dir build --output-on-failure
 
 ## DSP overview
 
-The current engine is intentionally small and hackable:
+`clean input → downsampled YIN detector → note latch → harmonic selector → oscillator/resonator → rise/release envelope → dry mix`
 
-`clean input → decimation → YIN pitch detector → harmonic selector → oscillator/resonator → onset envelope → soft limiting → dry mix`
-
-Pitch analysis runs on a downsampled stream to keep CPU usage reasonable. The effect holds the last reliable pitch briefly while the source note decays, which lets the synthetic feedback outlive the guitar transient instead of collapsing as soon as the input gets quiet.
+The pitch detector runs continuously, but once SCREAM is engaged the current note is latched. Small pitch movement is followed for bends/vibrato; large detector jumps are ignored until SCREAM is retriggered. This prevents a dying guitar note from turning into octave roulette.
 
 The dry guitar path is left untouched; saturation/limiting is applied only to the generated feedback voice.
 
-The DSP lives in header-only classes under `DSP/` and has a deterministic smoke test independent of the plug-in wrapper.
-
 ## Roadmap
 
-Likely next steps after real guitar testing:
+Likely next steps after more real-guitar testing:
 
-- better attack/new-note discrimination
-- dual-resonator crossfades during harmonic migration
+- better automatic new-note retriggering without sacrificing pitch stability
+- dual-resonator crossfades for even more natural harmonic transitions
 - optional Low/High natural-feedback personalities
 - MIDI learn instead of fixed CC assignments
 - preset browser and A/B
@@ -111,7 +111,7 @@ Likely next steps after real guitar testing:
 
 ## License
 
-SCREAMBACK is licensed under **GPL-3.0-only** with a reasonable author-attribution requirement under GPLv3 section 7(b). See `LICENSE` and `ADDITIONAL_TERMS.md`.
+SCREAMBACK is licensed under **GPL-3.0-only** with an author-attribution requirement under GPLv3 section 7(b). See `LICENSE` and `ADDITIONAL_TERMS.md`.
 
 Required attribution when conveying the software or modified builds:
 
