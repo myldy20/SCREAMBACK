@@ -15,8 +15,8 @@ struct Parameters {
   Mode mode = Mode::Natural;
   Voice voice = Voice::Auto;
   double amount = 0.72;
-  double onsetMs = 420.0;
-  double sensitivity = 0.62;
+  double onsetMs = 350.0;
+  double sensitivity = 0.68;
   bool engaged = false;
 };
 
@@ -34,28 +34,21 @@ public:
     mLfoPhase = 0.0;
     mCurrentHz = 220.0;
     mLastTrackedHz = 0.0;
+    mLockedBaseHz = 0.0;
     mWetEnvelope = 0.0;
-    mInputFast = 0.0;
-    mInputSlow = 0.0;
     mNoteAge = 0.0;
     mPitchHold = 999.0;
+    mWasEngaged = false;
+    mLocked = false;
     mResY1 = mResY2 = 0.0;
   }
 
   double ProcessSample(double input, const Parameters& p) {
     mPitch.Push(input);
 
-    const double absIn = std::abs(input);
-    mInputFast += (absIn - mInputFast) * 0.025;
-    mInputSlow += (absIn - mInputSlow) * 0.0012;
-    const bool attack = mInputFast > std::max(0.006, mInputSlow * 1.65) && absIn > 0.0025;
-    if (attack)
-      mNoteAge = 0.0;
-    else
-      mNoteAge += 1.0 / mSampleRate;
-
-    const double confGate = 0.88 - 0.45 * std::clamp(p.sensitivity, 0.0, 1.0);
-    const double rmsGate = 0.018 - 0.0165 * std::clamp(p.sensitivity, 0.0, 1.0);
+    const double sensitivity = std::clamp(p.sensitivity, 0.0, 1.0);
+    const double confGate = 0.88 - 0.45 * sensitivity;
+    const double rmsGate = 0.018 - 0.0165 * sensitivity;
     const bool pitchGood = mPitch.Confidence() >= confGate && mPitch.Rms() >= rmsGate;
 
     if (pitchGood) {
@@ -68,16 +61,52 @@ public:
       mPitchHold += 1.0 / mSampleRate;
     }
 
-    const bool canSing = mLastTrackedHz > 0.0 && mPitchHold < 1.8;
-    const double target = canSing ? mLastTrackedHz * HarmonicMultiplier(p) : mCurrentHz;
+    const bool risingEdge = p.engaged && !mWasEngaged;
+
+    // SCREAM is a latch: capture one note and keep singing it until SCREAM is
+    // released. This deliberately prevents late low-level pitch-detector errors
+    // from making the generated feedback jump by octaves while the guitar note
+    // itself is dying away.
+    if (risingEdge) {
+      mLocked = false;
+      mNoteAge = 0.0;
+      if (mLastTrackedHz > 0.0 && mPitchHold < 0.35)
+        LockPitch(mLastTrackedHz);
+    }
+
+    if (p.engaged) {
+      if (!mLocked && pitchGood && mLastTrackedHz > 0.0) {
+        LockPitch(mLastTrackedHz);
+      } else if (mLocked && pitchGood && mLastTrackedHz > 0.0) {
+        // Follow normal guitar vibrato and bends, but reject large jumps. To
+        // capture a different note, release/retrigger SCREAM (or the MIDI gate).
+        const double semitones = std::abs(12.0 * std::log2(mLastTrackedHz / mLockedBaseHz));
+        if (semitones < 2.5) {
+          const double follow = 1.0 - std::exp(-1.0 / (mSampleRate * 0.030));
+          mLockedBaseHz += (mLastTrackedHz - mLockedBaseHz) * follow;
+        }
+      }
+
+      if (mLocked)
+        mNoteAge += 1.0 / mSampleRate;
+    }
+
+    const double target = mLocked
+      ? mLockedBaseHz * HarmonicMultiplier(p)
+      : mCurrentHz;
     const double safeTarget = std::clamp(target, 55.0, mSampleRate * 0.42);
-    const double glide = 1.0 - std::exp(-1.0 / (mSampleRate * 0.018));
+
+    // A modest glide removes clicks when the user changes harmonic. Natural
+    // mode changes more slowly so its evolution feels like feedback finding a
+    // new resonance rather than a pitch-switching arpeggiator.
+    const double glideSeconds = p.mode == Mode::Natural ? 0.14 : 0.055;
+    const double glide = 1.0 - std::exp(-1.0 / (mSampleRate * glideSeconds));
     mCurrentHz += (safeTarget - mCurrentHz) * glide;
 
     const double onsetSeconds = std::max(0.015, p.onsetMs * 0.001);
     const double attackCoeff = 1.0 - std::exp(-1.0 / (mSampleRate * onsetSeconds));
-    const double releaseCoeff = 1.0 - std::exp(-1.0 / (mSampleRate * 0.18));
-    const double wanted = (p.engaged && canSing) ? 1.0 : 0.0;
+    const double releaseCoeff = 1.0 - std::exp(-1.0 / (mSampleRate * 0.22));
+    const double wanted = (p.engaged && mLocked) ? 1.0 : 0.0;
     mWetEnvelope += (wanted - mWetEnvelope) * (wanted > mWetEnvelope ? attackCoeff : releaseCoeff);
 
     constexpr double twoPi = 6.283185307179586476925286766559;
@@ -97,16 +126,34 @@ public:
       case Mode::Natural: wet = 0.54 * osc + 0.46 * resonant; break;
     }
 
-    const double decay = std::clamp(1.0 - mPitchHold / 1.8, 0.0, 1.0);
-    const double feedback = std::tanh(wet * (1.15 + 1.8 * p.amount));
-    return input + feedback * mWetEnvelope * decay * std::clamp(p.amount, 0.0, 1.0) * 0.52;
+    const double amount = std::clamp(p.amount, 0.0, 1.0);
+    const double feedback = std::tanh(wet * (1.15 + 1.8 * amount));
+    const double output = input + feedback * mWetEnvelope * amount * 0.52;
+
+    mWasEngaged = p.engaged;
+    if (!p.engaged && mWetEnvelope < 0.0005) {
+      mLocked = false;
+      mLockedBaseHz = 0.0;
+      mNoteAge = 0.0;
+    }
+
+    return output;
   }
 
   double TrackedPitchHz() const { return mLastTrackedHz; }
+  double LockedPitchHz() const { return mLockedBaseHz; }
+  double CurrentFeedbackHz() const { return mCurrentHz; }
   double Confidence() const { return mPitch.Confidence(); }
   double Envelope() const { return mWetEnvelope; }
+  bool IsLocked() const { return mLocked; }
 
 private:
+  void LockPitch(double hz) {
+    mLockedBaseHz = std::clamp(hz, 55.0, 1400.0);
+    mLocked = true;
+    mNoteAge = 0.0;
+  }
+
   double HarmonicMultiplier(const Parameters& p) const {
     if (p.voice != Voice::Auto) {
       switch (p.voice) {
@@ -118,18 +165,19 @@ private:
       }
     }
 
+    // Auto is intentionally stable in DF-2 and FreqOut. Only Natural evolves.
+    // This makes the first two modes predictable and reserves harmonic motion
+    // for the mode whose name promises it.
     switch (p.mode) {
       case Mode::DF2:
-        return mNoteAge < 1.2 ? 1.0 : 2.0;
+        return 1.0;
       case Mode::FreqOut:
-        if (mNoteAge < 0.75) return 1.0;
-        if (mNoteAge < 1.75) return 2.0;
-        return 3.0;
+        return 2.0;
       case Mode::Natural:
       default:
-        if (mNoteAge < 0.55) return 1.0;
-        if (mNoteAge < 1.45) return 2.0;
-        if (mNoteAge < 2.8) return 3.0;
+        if (mNoteAge < 2.4) return 1.0;
+        if (mNoteAge < 6.0) return 2.0;
+        if (mNoteAge < 10.0) return 3.0;
         return 5.0;
     }
   }
@@ -163,11 +211,12 @@ private:
   double mLfoPhase = 0.0;
   double mCurrentHz = 220.0;
   double mLastTrackedHz = 0.0;
+  double mLockedBaseHz = 0.0;
   double mWetEnvelope = 0.0;
-  double mInputFast = 0.0;
-  double mInputSlow = 0.0;
   double mNoteAge = 0.0;
   double mPitchHold = 999.0;
+  bool mWasEngaged = false;
+  bool mLocked = false;
   double mResY1 = 0.0;
   double mResY2 = 0.0;
 };

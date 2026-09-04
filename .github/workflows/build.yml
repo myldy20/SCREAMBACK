@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SCREAMBACK_VERSION: 0.1.0
+  SCREAMBACK_VERSION: 0.2.0
 
 permissions:
   contents: read

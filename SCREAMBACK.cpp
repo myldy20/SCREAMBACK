@@ -8,17 +8,19 @@
 SCREAMBACK::SCREAMBACK(const InstanceInfo& info)
 : iplug::Plugin(info, MakeConfig(kNumParams, kNumPresets))
 {
-  GetParam(kMode)->InitEnum("Mode", 2, {"DF-2", "FreqOut", "Natural"});
-  GetParam(kVoice)->InitEnum("Voice", 0, {"Auto", "Fundamental", "2nd", "3rd", "5th"});
-  GetParam(kAmount)->InitDouble("Amount", 72.0, 0.0, 100.0, 0.1, "%");
-  GetParam(kOnset)->InitDouble("Onset", 420.0, 0.0, 2000.0, 1.0, "ms");
-  GetParam(kSensitivity)->InitDouble("Sensitivity", 62.0, 0.0, 100.0, 0.1, "%");
-  GetParam(kEngage)->InitBool("Engage", false, "", 0, "", "OFF", "ON");
+  // The default should do the obvious thing: focused octave feedback, quickly.
+  // Natural/Auto is intentionally an opt-in personality because it evolves.
+  GetParam(kMode)->InitEnum("Mode", 1, {"DF-2", "FreqOut", "Natural"});
+  GetParam(kVoice)->InitEnum("Harmonic", 2, {"Auto", "Fundamental", "2nd", "3rd", "5th"});
+  GetParam(kAmount)->InitDouble("Level", 72.0, 0.0, 100.0, 0.1, "%");
+  GetParam(kOnset)->InitDouble("Rise", 250.0, 15.0, 1500.0, 1.0, "ms");
+  GetParam(kSensitivity)->InitDouble("Track", 70.0, 0.0, 100.0, 0.1, "%");
+  GetParam(kEngage)->InitBool("Scream", false, "", 0, "", "OFF", "ON");
 
-  MakePreset("Natural", 2.0, 0.0, 72.0, 420.0, 62.0, 0.0);
-  MakePreset("DF-2 Classic", 0.0, 1.0, 58.0, 650.0, 58.0, 0.0);
-  MakePreset("FreqOut Fast", 1.0, 2.0, 78.0, 180.0, 70.0, 0.0);
-  MakePreset("Long Howl", 2.0, 0.0, 86.0, 950.0, 68.0, 0.0);
+  MakePreset("FreqOut / 2nd", 1.0, 2.0, 72.0, 250.0, 70.0, 0.0);
+  MakePreset("DF-2 Classic", 0.0, 1.0, 60.0, 550.0, 62.0, 0.0);
+  MakePreset("Natural Evolve", 2.0, 0.0, 74.0, 500.0, 70.0, 0.0);
+  MakePreset("Long Howl", 2.0, 0.0, 86.0, 1000.0, 74.0, 0.0);
 
 #if IPLUG_EDITOR
   mMakeGraphicsFunc = [&]() {
@@ -27,66 +29,114 @@ SCREAMBACK::SCREAMBACK(const InstanceInfo& info)
   };
 
   mLayoutFunc = [&](IGraphics* pGraphics) {
-    const IColor background(255, 18, 17, 20);
-    const IColor panel(255, 31, 29, 34);
-    const IColor accent(255, 238, 76, 70);
-    const IColor text(255, 236, 232, 226);
-    const IColor muted(255, 145, 139, 139);
+    const IColor background(255, 14, 14, 17);
+    const IColor panel(255, 30, 29, 34);
+    const IColor panelRaised(255, 39, 37, 43);
+    const IColor accent(255, 255, 82, 74);
+    const IColor accentHot(255, 255, 112, 91);
+    const IColor text(255, 244, 242, 239);
+    const IColor muted(255, 176, 171, 174);
+    const IColor dim(255, 119, 114, 120);
+    const IColor control(255, 105, 101, 111);
 
-    const IVStyle style = DEFAULT_STYLE
+    const IVStyle knobStyle = DEFAULT_STYLE
       .WithColor(kBG, panel)
-      .WithColor(kFG, IColor(255, 71, 67, 74))
+      .WithColor(kFG, control)
       .WithColor(kPR, accent)
-      .WithLabelText(DEFAULT_LABEL_TEXT.WithFGColor(muted))
-      .WithValueText(DEFAULT_VALUE_TEXT.WithFGColor(text))
+      .WithLabelText(DEFAULT_LABEL_TEXT.WithFGColor(text).WithSize(15.f))
+      .WithValueText(DEFAULT_VALUE_TEXT.WithFGColor(text).WithSize(14.f))
       .WithRoundness(0.18f)
       .WithFrameThickness(1.5f)
       .WithDrawShadows(false);
 
-    const IVStyle engageStyle = style
-      .WithColor(kBG, IColor(255, 38, 35, 39))
+    const IVStyle modeStyle = DEFAULT_STYLE
+      .WithColor(kBG, panelRaised)
+      .WithColor(kFG, text)
+      .WithColor(kPR, accent)
+      .WithLabelText(DEFAULT_LABEL_TEXT.WithFGColor(text).WithSize(14.f))
+      .WithValueText(DEFAULT_VALUE_TEXT.WithFGColor(text).WithSize(13.f))
+      .WithRoundness(0.14f)
+      .WithFrameThickness(1.5f)
+      .WithDrawShadows(false);
+
+    const IVStyle menuStyle = knobStyle
+      .WithColor(kBG, panelRaised)
+      .WithColor(kFG, text);
+
+    const IVStyle engageStyle = DEFAULT_STYLE
+      .WithColor(kBG, panelRaised)
       .WithColor(kFG, accent)
-      .WithColor(kPR, IColor(255, 255, 116, 91))
-      .WithValueText(DEFAULT_VALUE_TEXT.WithFGColor(text).WithSize(22.f));
+      .WithColor(kPR, accentHot)
+      .WithLabelText(DEFAULT_LABEL_TEXT.WithFGColor(text).WithSize(14.f))
+      .WithValueText(DEFAULT_VALUE_TEXT.WithFGColor(text).WithSize(20.f))
+      .WithRoundness(0.16f)
+      .WithFrameThickness(2.f)
+      .WithDrawShadows(false);
 
     pGraphics->AttachCornerResizer(EUIResizerMode::Scale, false);
     pGraphics->AttachPanelBackground(background);
     pGraphics->LoadFont("Roboto-Regular", ROBOTO_FN);
 
     pGraphics->AttachControl(new ITextControl(
-      IRECT(30.f, 18.f, 690.f, 68.f), "SCREAMBACK",
-      IText(42.f, accent, "Roboto-Regular")));
+      IRECT(30.f, 14.f, 690.f, 58.f), "SCREAMBACK",
+      IText(38.f, accent, "Roboto-Regular")));
     pGraphics->AttachControl(new ITextControl(
-      IRECT(33.f, 60.f, 690.f, 84.f), "controlled feedback without the amp",
-      IText(15.f, muted, "Roboto-Regular")));
+      IRECT(30.f, 54.f, 690.f, 76.f), "controlled feedback without the amp",
+      IText(14.f, muted, "Roboto-Regular")));
+
+    pGraphics->AttachControl(new ITextControl(
+      IRECT(45.f, 82.f, 675.f, 104.f),
+      "PLAY A NOTE  →  PRESS SCREAM  →  FEEDBACK HOLDS UNTIL YOU STOP IT",
+      IText(11.f, text, "Roboto-Regular")));
 
     pGraphics->AttachControl(new IVRadioButtonControl(
-      IRECT(30.f, 98.f, 690.f, 155.f), kMode,
-      {"DF-2", "FREQOUT", "NATURAL"}, "MODE", style,
+      IRECT(30.f, 112.f, 690.f, 164.f), kMode,
+      {"DF-2", "FREQOUT", "NATURAL"}, "MODE", modeStyle,
       EVShape::Rectangle, EDirection::Horizontal, 11.f));
+    pGraphics->AttachControl(new ITextControl(
+      IRECT(40.f, 164.f, 680.f, 184.f),
+      "synthetic / old-school     •     focused / stable     •     evolving harmonics",
+      IText(10.f, dim, "Roboto-Regular")));
 
     pGraphics->AttachControl(new IVKnobControl(
-      IRECT(30.f, 178.f, 180.f, 300.f), kAmount, "AMOUNT", style));
+      IRECT(30.f, 194.f, 178.f, 306.f), kAmount, "LEVEL", knobStyle));
     pGraphics->AttachControl(new IVKnobControl(
-      IRECT(190.f, 178.f, 340.f, 300.f), kOnset, "ONSET", style));
+      IRECT(190.f, 194.f, 338.f, 306.f), kOnset, "RISE", knobStyle));
     pGraphics->AttachControl(new IVKnobControl(
-      IRECT(350.f, 178.f, 500.f, 300.f), kSensitivity, "SENSE", style));
+      IRECT(350.f, 194.f, 498.f, 306.f), kSensitivity, "TRACK", knobStyle));
 
-    pGraphics->AttachControl(new IVMenuButtonControl(
-      IRECT(30.f, 316.f, 300.f, 370.f), kVoice, "VOICE", style));
+    pGraphics->AttachControl(new ITextControl(
+      IRECT(30.f, 301.f, 178.f, 321.f), "feedback volume",
+      IText(10.f, muted, "Roboto-Regular")));
+    pGraphics->AttachControl(new ITextControl(
+      IRECT(190.f, 301.f, 338.f, 321.f), "time to bloom",
+      IText(10.f, muted, "Roboto-Regular")));
+    pGraphics->AttachControl(new ITextControl(
+      IRECT(350.f, 301.f, 498.f, 321.f), "how easily a note locks",
+      IText(10.f, muted, "Roboto-Regular")));
 
     pGraphics->AttachControl(new IVToggleControl(
-      IRECT(510.f, 186.f, 690.f, 302.f), kEngage, "",
-      engageStyle, "ARM", "SCREAM"));
+      IRECT(510.f, 200.f, 690.f, 309.f), kEngage, "FEEDBACK",
+      engageStyle, "SCREAM", "SCREAMING"));
+    pGraphics->AttachControl(new ITextControl(
+      IRECT(510.f, 307.f, 690.f, 325.f), "click = latch   •   MIDI = hold",
+      IText(9.f, muted, "Roboto-Regular")));
+
+    pGraphics->AttachControl(new IVMenuButtonControl(
+      IRECT(30.f, 334.f, 390.f, 388.f), kVoice, "HARMONIC", menuStyle));
+    pGraphics->AttachControl(new ITextControl(
+      IRECT(400.f, 339.f, 690.f, 361.f),
+      "Auto is stable in DF-2/FreqOut;\nonly Natural evolves",
+      IText(9.f, muted, "Roboto-Regular")));
 
     pGraphics->AttachControl(new ITextControl(
-      IRECT(30.f, 384.f, 690.f, 405.f),
-      "MIDI  C3/CC64 gate   CC20 engage   21 amount   22 onset   23 voice   24 sense   25 mode",
-      IText(11.f, muted, "Roboto-Regular")));
+      IRECT(30.f, 402.f, 690.f, 421.f),
+      "MIDI: C3 or CC64 = momentary SCREAM   •   CC20–25 = plug-in controls",
+      IText(10.f, muted, "Roboto-Regular")));
     pGraphics->AttachControl(new ITextControl(
-      IRECT(30.f, 406.f, 690.f, 424.f),
-      "SCREAMBACK by Ilya Tolstoukhov  ·  GPLv3",
-      IText(10.f, IColor(255, 94, 89, 92), "Roboto-Regular")));
+      IRECT(30.f, 428.f, 690.f, 445.f),
+      "SCREAMBACK v0.2  ·  Ilya Tolstoukhov  ·  GPLv3",
+      IText(9.f, dim, "Roboto-Regular")));
   };
 #endif
 }
