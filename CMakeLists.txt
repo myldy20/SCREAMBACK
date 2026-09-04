@@ -16,7 +16,7 @@ endif()
 include(${IPLUG2_DIR}/iPlug2.cmake)
 find_package(iPlug2 REQUIRED)
 
-set(SCREAMBACK_FORMATS VST3 APP)
+set(SCREAMBACK_FORMATS VST3)
 if(APPLE)
   list(APPEND SCREAMBACK_FORMATS AU)
 endif()
