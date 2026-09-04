@@ -1,0 +1,212 @@
+name: Build SCREAMBACK
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SCREAMBACK_VERSION: 0.1.0
+
+permissions:
+  contents: read
+
+jobs:
+  dsp-smoke:
+    name: DSP smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile standalone DSP test
+        run: g++ -std=c++17 -O2 -Wall -Wextra -pedantic -I. tests/dsp_smoke.cpp -o dsp_smoke
+      - name: Run DSP test
+        run: ./dsp_smoke
+
+  windows:
+    name: Windows x64 / VST3 + installer
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch pinned iPlug2
+        shell: bash
+        run: |
+          git clone --recurse-submodules https://github.com/iPlug2/iPlug2.git ../iPlug2
+          git -C ../iPlug2 checkout d54f69050f517e43b941d88c2a170f0a840b9ee4
+          git -C ../iPlug2 submodule update --init --recursive
+
+      - name: Download public plug-in SDKs
+        shell: bash
+        run: |
+          cd ../iPlug2/Dependencies/IPlug
+          ./download-iplug-sdks.sh
+
+      - name: Configure
+        shell: bash
+        run: |
+          IPLUG2_CMAKE_PATH="$(cygpath -m "${GITHUB_WORKSPACE}/../iPlug2")"
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 \
+            -DIPLUG2_DIR="$IPLUG2_CMAKE_PATH" \
+            -DIPLUG_DEPLOY_PLUGINS=OFF \
+            -DSCREAMBACK_BUILD_TESTS=ON
+
+      - name: Build
+        shell: bash
+        run: |
+          cmake --build build --config Release \
+            --target SCREAMBACK-vst3 SCREAMBACK-dsp-smoke
+
+      - name: Test
+        shell: bash
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Stage VST3 for installer
+        shell: pwsh
+        run: |
+          $plugin = Get-ChildItem -Path build/out -Directory -Recurse -Filter SCREAMBACK.vst3 | Select-Object -First 1
+          if (-not $plugin) { throw "SCREAMBACK.vst3 was not produced" }
+          Remove-Item packaging/windows/stage -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force packaging/windows/stage | Out-Null
+          Copy-Item -Recurse -Force $plugin.FullName packaging/windows/stage/SCREAMBACK.vst3
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+          }
+          if (-not (Test-Path $iscc)) { throw "Inno Setup compiler not found" }
+          & $iscc "/DMyAppVersion=$env:SCREAMBACK_VERSION" "packaging\windows\SCREAMBACK.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SCREAMBACK-windows-x64
+          path: |
+            dist/windows/*.exe
+            build/out/SCREAMBACK.vst3
+          if-no-files-found: error
+
+  macos:
+    name: macOS Universal / VST3 + AU + installer
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch pinned iPlug2
+        run: |
+          git clone --recurse-submodules https://github.com/iPlug2/iPlug2.git ../iPlug2
+          git -C ../iPlug2 checkout d54f69050f517e43b941d88c2a170f0a840b9ee4
+          git -C ../iPlug2 submodule update --init --recursive
+
+      - name: Download public plug-in SDKs
+        run: |
+          cd ../iPlug2/Dependencies/IPlug
+          ./download-iplug-sdks.sh
+
+      - name: Configure universal build
+        run: |
+          cmake -S . -B build -G Xcode \
+            -DIPLUG2_DIR="${GITHUB_WORKSPACE}/../iPlug2" \
+            -DIPLUG_DEPLOY_PLUGINS=OFF \
+            -DSCREAMBACK_BUILD_TESTS=ON \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+
+      - name: Build
+        run: |
+          cmake --build build --config Release \
+            --target SCREAMBACK-vst3 SCREAMBACK-au SCREAMBACK-dsp-smoke
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Ad-hoc sign development artifacts
+        run: |
+          codesign --force --deep --sign - build/out/Release/SCREAMBACK.vst3
+          codesign --force --deep --sign - build/out/Release/SCREAMBACK.component
+          codesign --verify --deep --strict --verbose=2 build/out/Release/SCREAMBACK.vst3
+          codesign --verify --deep --strict --verbose=2 build/out/Release/SCREAMBACK.component
+
+      - name: Build macOS installer package
+        run: |
+          set -euo pipefail
+          ROOT="$PWD/packaging/macos/root"
+          PKG="dist/macos/SCREAMBACK-${SCREAMBACK_VERSION}-macOS-universal.pkg"
+          rm -rf "$ROOT" dist/macos
+          mkdir -p \
+            "$ROOT/Library/Audio/Plug-Ins/VST3" \
+            "$ROOT/Library/Audio/Plug-Ins/Components" \
+            "$ROOT/Library/Application Support/SCREAMBACK" \
+            dist/macos
+          cp -R build/out/Release/SCREAMBACK.vst3 "$ROOT/Library/Audio/Plug-Ins/VST3/"
+          cp -R build/out/Release/SCREAMBACK.component "$ROOT/Library/Audio/Plug-Ins/Components/"
+          cp LICENSE ADDITIONAL_TERMS.md INSTALL.md "$ROOT/Library/Application Support/SCREAMBACK/"
+          pkgbuild \
+            --root "$ROOT" \
+            --identifier com.myldy20.screamback \
+            --version "$SCREAMBACK_VERSION" \
+            --install-location / \
+            "$PKG"
+          pkgutil --payload-files "$PKG" | grep -q 'Library/Audio/Plug-Ins/VST3/SCREAMBACK.vst3'
+          pkgutil --payload-files "$PKG" | grep -q 'Library/Audio/Plug-Ins/Components/SCREAMBACK.component'
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SCREAMBACK-macos-universal
+          path: |
+            dist/macos/*.pkg
+            build/out/Release/SCREAMBACK.vst3
+            build/out/Release/SCREAMBACK.component
+          if-no-files-found: error
+
+  release:
+    name: Publish tagged GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - dsp-smoke
+      - windows
+      - macos
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SCREAMBACK-windows-x64
+          path: release-assets/windows
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SCREAMBACK-macos-universal
+          path: release-assets/macos
+
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          WIN="$(find release-assets/windows -type f -name '*Setup.exe' -print -quit)"
+          MAC="$(find release-assets/macos -type f -name '*.pkg' -print -quit)"
+          test -n "$WIN"
+          test -n "$MAC"
+
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$WIN" "$MAC" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$WIN" "$MAC" \
+              --title "SCREAMBACK $GITHUB_REF_NAME" \
+              --generate-notes
+          fi
