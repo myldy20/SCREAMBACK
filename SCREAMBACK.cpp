@@ -128,7 +128,9 @@ void SCREAMBACK::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
       const double dry = nIn > 0
         ? static_cast<double>(inputs[std::min(c, nIn - 1)][s])
         : 0.0;
-      outputs[c][s] = static_cast<sample>(std::tanh((dry + feedbackOnly) * 1.02));
+      // Keep the dry path bit-transparent. Any limiting/saturation belongs to the
+      // generated feedback voice inside FeedbackEngine, not to the guitar input.
+      outputs[c][s] = static_cast<sample>(dry + feedbackOnly);
     }
   }
 }
