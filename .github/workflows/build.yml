@@ -45,8 +45,9 @@ jobs:
       - name: Configure
         shell: bash
         run: |
+          IPLUG2_CMAKE_PATH="$(cygpath -m "${GITHUB_WORKSPACE}/../iPlug2")"
           cmake -S . -B build -G "Visual Studio 17 2022" -A x64 \
-            -DIPLUG2_DIR="${GITHUB_WORKSPACE}/../iPlug2" \
+            -DIPLUG2_DIR="$IPLUG2_CMAKE_PATH" \
             -DIPLUG_DEPLOY_PLUGINS=OFF \
             -DSCREAMBACK_BUILD_TESTS=ON
 
@@ -54,7 +55,7 @@ jobs:
         shell: bash
         run: |
           cmake --build build --config Release \
-            --target SCREAMBACK-vst3 SCREAMBACK-app SCREAMBACK-dsp-smoke
+            --target SCREAMBACK-vst3 SCREAMBACK-dsp-smoke
 
       - name: Test
         shell: bash
@@ -95,7 +96,7 @@ jobs:
       - name: Build
         run: |
           cmake --build build --config Release \
-            --target SCREAMBACK-vst3 SCREAMBACK-au SCREAMBACK-app SCREAMBACK-dsp-smoke
+            --target SCREAMBACK-vst3 SCREAMBACK-au SCREAMBACK-dsp-smoke
 
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
@@ -104,7 +105,6 @@ jobs:
         run: |
           [ -d build/out/SCREAMBACK.vst3 ] && codesign --force --deep --sign - build/out/SCREAMBACK.vst3 || true
           [ -d build/out/SCREAMBACK.component ] && codesign --force --deep --sign - build/out/SCREAMBACK.component || true
-          [ -d build/out/SCREAMBACK.app ] && codesign --force --deep --sign - build/out/SCREAMBACK.app || true
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
