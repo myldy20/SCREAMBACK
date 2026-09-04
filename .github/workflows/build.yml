@@ -105,8 +105,10 @@ jobs:
 
       - name: Ad-hoc sign development artifacts
         run: |
-          [ -d build/out/SCREAMBACK.vst3 ] && codesign --force --deep --sign - build/out/SCREAMBACK.vst3 || true
-          [ -d build/out/SCREAMBACK.component ] && codesign --force --deep --sign - build/out/SCREAMBACK.component || true
+          codesign --force --deep --sign - build/out/Release/SCREAMBACK.vst3
+          codesign --force --deep --sign - build/out/Release/SCREAMBACK.component
+          codesign --verify --deep --strict --verbose=2 build/out/Release/SCREAMBACK.vst3
+          codesign --verify --deep --strict --verbose=2 build/out/Release/SCREAMBACK.component
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
