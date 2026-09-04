@@ -23,6 +23,19 @@ Controls are intentionally minimal:
 
 Put SCREAMBACK **before distortion / amp simulation** for the cleanest tracking.
 
+## Download and install
+
+Tagged GitHub Releases publish one-file installers automatically:
+
+- Windows x64: `SCREAMBACK-<version>-Windows-x64-Setup.exe`
+- macOS universal (Apple Silicon + Intel): `SCREAMBACK-<version>-macOS-universal.pkg`
+
+The Windows installer puts the VST3 bundle in the standard system VST3 folder and adds a normal uninstaller entry. The macOS package installs both VST3 and AUv2 into the standard system Audio Plug-Ins folders.
+
+Development CI artifacts also contain the raw plug-in bundles for manual installation/testing. See [INSTALL.md](INSTALL.md) for paths and Gatekeeper/SmartScreen notes.
+
+Current public builds do not yet use paid platform signing certificates: Windows may show SmartScreen's "Unknown publisher" warning and the macOS package is not Developer ID signed/notarized. The macOS plug-in bundles themselves are ad-hoc signed in CI.
+
 ## MIDI
 
 SCREAMBACK accepts MIDI input in VST3/AU hosts.
@@ -41,12 +54,12 @@ All user-facing controls are normal plug-in parameters too, so they can be autom
 
 ## Formats
 
-CI currently builds:
+CI builds and packages:
 
-- Windows x64: **VST3**
-- macOS universal (Apple Silicon + Intel): **VST3**, **AUv2**
+- Windows x64: **VST3** + `.exe` installer
+- macOS universal (Apple Silicon + Intel): **VST3**, **AUv2** + `.pkg` installer
 
-The macOS CI artifacts are development builds and are not notarized yet. Proper Developer ID signing/notarization can be added to release jobs once signing credentials are configured.
+A tag matching `v*` (for example `v0.1.0`) automatically builds both platforms and publishes the two installers as GitHub Release assets.
 
 ## Building
 
@@ -93,7 +106,7 @@ Likely next steps after real guitar testing:
 - optional Low/High natural-feedback personalities
 - MIDI learn instead of fixed CC assignments
 - preset browser and A/B
-- signed/notarized macOS release artifacts and installers
+- Developer ID / Authenticode signing and macOS notarization
 - automated plug-in validation (`pluginval`, `auval`)
 
 ## License
