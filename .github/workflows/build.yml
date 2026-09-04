@@ -94,7 +94,7 @@ jobs:
           name: SCREAMBACK-windows-x64
           path: |
             dist/windows/*.exe
-            build/out/Release/SCREAMBACK.vst3
+            build/out/SCREAMBACK.vst3
           if-no-files-found: error
 
   macos:
