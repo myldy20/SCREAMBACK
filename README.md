@@ -43,8 +43,8 @@ All user-facing controls are normal plug-in parameters too, so they can be autom
 
 CI currently builds:
 
-- Windows x64: **VST3** + standalone test app
-- macOS universal (Apple Silicon + Intel): **VST3**, **AUv2** + standalone test app
+- Windows x64: **VST3**
+- macOS universal (Apple Silicon + Intel): **VST3**, **AUv2**
 
 The macOS CI artifacts are development builds and are not notarized yet. Proper Developer ID signing/notarization can be added to release jobs once signing credentials are configured.
 
@@ -79,6 +79,8 @@ The current engine is intentionally small and hackable:
 `clean input → decimation → YIN pitch detector → harmonic selector → oscillator/resonator → onset envelope → soft limiting → dry mix`
 
 Pitch analysis runs on a downsampled stream to keep CPU usage reasonable. The effect holds the last reliable pitch briefly while the source note decays, which lets the synthetic feedback outlive the guitar transient instead of collapsing as soon as the input gets quiet.
+
+The dry guitar path is left untouched; saturation/limiting is applied only to the generated feedback voice.
 
 The DSP lives in header-only classes under `DSP/` and has a deterministic smoke test independent of the plug-in wrapper.
 
