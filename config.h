@@ -2,8 +2,8 @@
 
 #define PLUG_NAME "SCREAMBACK"
 #define PLUG_MFR "Ilya Tolstoukhov"
-#define PLUG_VERSION_HEX 0x00010000
-#define PLUG_VERSION_STR "0.1.0"
+#define PLUG_VERSION_HEX 0x00020000
+#define PLUG_VERSION_STR "0.2.0"
 #define PLUG_UNIQUE_ID 'ScBk'
 #define PLUG_MFR_ID 'IyTo'
 #define PLUG_URL_STR "https://github.com/myldy20/SCREAMBACK"
@@ -26,14 +26,14 @@
 #define PLUG_DOES_STATE_CHUNKS 0
 #define PLUG_HAS_UI 1
 #define PLUG_WIDTH 720
-#define PLUG_HEIGHT 430
+#define PLUG_HEIGHT 450
 #define PLUG_FPS 60
 #define PLUG_SHARED_RESOURCES 0
 #define PLUG_HOST_RESIZE 1
 #define PLUG_MIN_WIDTH 540
-#define PLUG_MIN_HEIGHT 323
+#define PLUG_MIN_HEIGHT 338
 #define PLUG_MAX_WIDTH 1440
-#define PLUG_MAX_HEIGHT 860
+#define PLUG_MAX_HEIGHT 900
 
 #define AUV2_ENTRY SCREAMBACK_Entry
 #define AUV2_ENTRY_STR "SCREAMBACK_Entry"
