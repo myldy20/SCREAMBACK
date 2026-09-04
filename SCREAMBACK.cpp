@@ -13,12 +13,12 @@ SCREAMBACK::SCREAMBACK(const InstanceInfo& info)
   GetParam(kAmount)->InitDouble("Amount", 72.0, 0.0, 100.0, 0.1, "%");
   GetParam(kOnset)->InitDouble("Onset", 420.0, 0.0, 2000.0, 1.0, "ms");
   GetParam(kSensitivity)->InitDouble("Sensitivity", 62.0, 0.0, 100.0, 0.1, "%");
-  GetParam(kEngage)->InitBool("Engage", false, "OFF", "ON");
+  GetParam(kEngage)->InitBool("Engage", false, "", 0, "", "OFF", "ON");
 
-  MakePreset("Natural", 2, 0, 72.0, 420.0, 62.0, 0);
-  MakePreset("DF-2 Classic", 0, 1, 58.0, 650.0, 58.0, 0);
-  MakePreset("FreqOut Fast", 1, 2, 78.0, 180.0, 70.0, 0);
-  MakePreset("Long Howl", 2, 0, 86.0, 950.0, 68.0, 0);
+  MakePreset("Natural", 2.0, 0.0, 72.0, 420.0, 62.0, 0.0);
+  MakePreset("DF-2 Classic", 0.0, 1.0, 58.0, 650.0, 58.0, 0.0);
+  MakePreset("FreqOut Fast", 1.0, 2.0, 78.0, 180.0, 70.0, 0.0);
+  MakePreset("Long Howl", 2.0, 0.0, 86.0, 950.0, 68.0, 0.0);
 
 #if IPLUG_EDITOR
   mMakeGraphicsFunc = [&]() {
