@@ -1,0 +1,14 @@
+SCREAMBACK is free software licensed under the GNU General Public License, version 3 only (GPL-3.0-only).
+
+Copyright (C) 2026 Ilya Tolstoukhov
+
+You may redistribute and/or modify SCREAMBACK under the terms of version 3 of the GNU General Public License as published by the Free Software Foundation.
+
+The complete, canonical text of GNU GPL version 3 is available from the Free Software Foundation at:
+https://www.gnu.org/licenses/gpl-3.0.txt
+
+This distribution also includes an additional attribution term permitted by section 7(b) of GPLv3. See ADDITIONAL_TERMS.md.
+
+SCREAMBACK is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See GNU GPLv3 for details.
+
+SPDX-License-Identifier: GPL-3.0-only
