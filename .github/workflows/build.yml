@@ -1,0 +1,114 @@
+name: Build SCREAMBACK
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  dsp-smoke:
+    name: DSP smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile standalone DSP test
+        run: g++ -std=c++17 -O2 -Wall -Wextra -pedantic -I. tests/dsp_smoke.cpp -o dsp_smoke
+      - name: Run DSP test
+        run: ./dsp_smoke
+
+  windows:
+    name: Windows x64 / VST3
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch pinned iPlug2
+        shell: bash
+        run: |
+          git clone --recurse-submodules https://github.com/iPlug2/iPlug2.git ../iPlug2
+          git -C ../iPlug2 checkout d54f69050f517e43b941d88c2a170f0a840b9ee4
+          git -C ../iPlug2 submodule update --init --recursive
+
+      - name: Download public plug-in SDKs
+        shell: bash
+        run: |
+          cd ../iPlug2/Dependencies/IPlug
+          ./download-iplug-sdks.sh
+
+      - name: Configure
+        shell: bash
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 \
+            -DIPLUG2_DIR="${GITHUB_WORKSPACE}/../iPlug2" \
+            -DIPLUG_DEPLOY_PLUGINS=OFF \
+            -DSCREAMBACK_BUILD_TESTS=ON
+
+      - name: Build
+        shell: bash
+        run: |
+          cmake --build build --config Release \
+            --target SCREAMBACK-vst3 SCREAMBACK-app SCREAMBACK-dsp-smoke
+
+      - name: Test
+        shell: bash
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SCREAMBACK-windows-x64
+          path: build/out/
+          if-no-files-found: error
+
+  macos:
+    name: macOS Universal / VST3 + AU
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch pinned iPlug2
+        run: |
+          git clone --recurse-submodules https://github.com/iPlug2/iPlug2.git ../iPlug2
+          git -C ../iPlug2 checkout d54f69050f517e43b941d88c2a170f0a840b9ee4
+          git -C ../iPlug2 submodule update --init --recursive
+
+      - name: Download public plug-in SDKs
+        run: |
+          cd ../iPlug2/Dependencies/IPlug
+          ./download-iplug-sdks.sh
+
+      - name: Configure universal build
+        run: |
+          cmake -S . -B build -G Xcode \
+            -DIPLUG2_DIR="${GITHUB_WORKSPACE}/../iPlug2" \
+            -DIPLUG_DEPLOY_PLUGINS=OFF \
+            -DSCREAMBACK_BUILD_TESTS=ON \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+
+      - name: Build
+        run: |
+          cmake --build build --config Release \
+            --target SCREAMBACK-vst3 SCREAMBACK-au SCREAMBACK-app SCREAMBACK-dsp-smoke
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Ad-hoc sign development artifacts
+        run: |
+          [ -d build/out/SCREAMBACK.vst3 ] && codesign --force --deep --sign - build/out/SCREAMBACK.vst3 || true
+          [ -d build/out/SCREAMBACK.component ] && codesign --force --deep --sign - build/out/SCREAMBACK.component || true
+          [ -d build/out/SCREAMBACK.app ] && codesign --force --deep --sign - build/out/SCREAMBACK.app || true
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SCREAMBACK-macos-universal
+          path: build/out/
+          if-no-files-found: error
